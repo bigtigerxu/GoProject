@@ -16,11 +16,16 @@ type Context struct {
 	Path   string
 	Method string
 	Params map[string]string
+
 	// response info
 	StatusCode int
+
 	// middleware
 	handlers []HandlerFunc
 	index    int
+
+	// engine pointer
+	engine *Engine
 }
 
 func newContext(writer http.ResponseWriter, req *http.Request) *Context {
@@ -78,12 +83,6 @@ func (c *Context) Data(code int, data []byte) {
 	c.Writer.Write(data)
 }
 
-func (c *Context) HTML(code int, html string) {
-	c.SetHeader("Content-Type", "text/html")
-	c.Status(code)
-	c.Writer.Write([]byte(html))
-}
-
 func (c *Context) Param(key string) string {
 	value, _ := c.Params[key]
 	return value
@@ -92,4 +91,14 @@ func (c *Context) Param(key string) string {
 func (c *Context) Fail(code int, err string) {
 	c.index = len(c.handlers)
 	c.JSON(code, H{"message": err})
+}
+
+// HTML template render
+// refer https://golang.org/pkg/html/template/
+func (c *Context) HTML(code int, name string, data interface{}) {
+	c.SetHeader("Content-Type", "text/html")
+	c.Status(code)
+	if err := c.engine.htmlTemplates.ExecuteTemplate(c.Writer, name, data); err != nil {
+		c.Fail(500, err.Error())
+	}
 }
