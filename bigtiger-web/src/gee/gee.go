@@ -19,6 +19,7 @@ type (
 		parent      *RouterGroup  // support nesting
 		engine      *Engine       // all groups share a Engine instance
 	}
+
 	Engine struct {
 		*RouterGroup
 		router        *router
@@ -28,6 +29,7 @@ type (
 	}
 )
 
+// New is the constructor of gee.Engine
 func New() *Engine {
 	engine := &Engine{router: newRouter()}
 	engine.RouterGroup = &RouterGroup{engine: engine}
@@ -37,11 +39,11 @@ func New() *Engine {
 
 // Group is defined to create a new RouterGroup
 // remember all groups share the same Engine instance
-func (routerGroup *RouterGroup) Group(prefix string) *RouterGroup {
-	engine := routerGroup.engine
+func (group *RouterGroup) Group(prefix string) *RouterGroup {
+	engine := group.engine
 	newGroup := &RouterGroup{
-		prefix: routerGroup.prefix + prefix,
-		parent: routerGroup,
+		prefix: group.prefix + prefix,
+		parent: group,
 		engine: engine,
 	}
 	engine.groups = append(engine.groups, newGroup)
@@ -75,14 +77,12 @@ func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileS
 	fileServer := http.StripPrefix(absolutePath, http.FileServer(fs))
 	return func(c *Context) {
 		file := c.Param("filepath")
-		log.Printf("absolutePath:%s", absolutePath)
-		log.Printf("file:%s", file)
-		log.Printf("fileServer:%s", file)
 		// Check if file exists and/or if we have permission to access it
 		if _, err := fs.Open(file); err != nil {
 			c.Status(http.StatusNotFound)
 			return
 		}
+
 		fileServer.ServeHTTP(c.Writer, c.Req)
 	}
 }
@@ -92,12 +92,19 @@ func (group *RouterGroup) createStaticHandler(relativePath string, fs http.FileS
 // r.Static("/assets", "/usr/geektutu/blog/static")
 // 则用户访问localhost:9999/assets/js/geektutu.js，最终返回/usr/geektutu/blog/static/js/geektutu.js
 func (group *RouterGroup) Static(relativePath string, root string) {
-	log.Printf("root:%s", root)
 	handler := group.createStaticHandler(relativePath, http.Dir(root))
 	urlPattern := path.Join(relativePath, "/*filepath")
-	log.Printf("urlPattern:%s", urlPattern)
 	// Register GET handlers
 	group.GET(urlPattern, handler)
+}
+
+// for custom render function
+func (engine *Engine) SetFuncMap(funcMap template.FuncMap) {
+	engine.funcMap = funcMap
+}
+
+func (engine *Engine) LoadHTMLGlob(pattern string) {
+	engine.htmlTemplates = template.Must(template.New("").Funcs(engine.funcMap).ParseGlob(pattern))
 }
 
 // Run defines the method to start a http server
@@ -116,12 +123,4 @@ func (engine *Engine) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	c.handlers = middlewares
 	c.engine = engine
 	engine.router.handle(c)
-}
-
-func (engine *Engine) SetFuncMap(funcMap template.FuncMap) {
-	engine.funcMap = funcMap
-}
-
-func (engine *Engine) LoadHTMLGlob(pattern string) {
-	engine.htmlTemplates = template.Must(template.New("").Funcs(engine.funcMap).ParseGlob(pattern))
 }
